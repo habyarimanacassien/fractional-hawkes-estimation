@@ -1,30 +1,19 @@
+rm(list=ls())
 
-#set directory as folder containing current file
-#install.packages("rstudioapi")
+# Useful libraries
 library(rstudioapi)
 cur_dir = dirname(getSourceEditorContext()$path)
 setwd(cur_dir)
-
-number_of_cores <- 2  # number of cores or clusters
-Niter <- 100000  # number of iterations
-Max_iter <- 1  # max number of different simulated data sets for each process
-
-# Useful libraries
-#install.packages("rlist")
 library(MittagLeffleR)
 library(pracma)
 library("rlist")
-# load parallel package
 require(parallel)
 library(ggplot2)
 library(LaplacesDemon)
 
-
-
-#############################################################################
-#############################################################################
-
-### SUMMARY STATISTICS & DISTANCE FUNCTIONS TO USE
+################################################################################
+#                SUMMARY STATISTICS & DISTANCE FUNCTIONS TO USE                #
+################################################################################
 
 # 1. Function to compute_diff_log_nbr_distance (LN)
 compute_diff_log_nbr_distance <- function(distr1, distr2){
@@ -36,11 +25,9 @@ compute_diff_log_nbr_distance <- function(distr1, distr2){
   #End function
 }
 
-
 # 2. Function to compute_wasserstein_distance (WS)
 compute_wasserstein_distance <- function(distr1, distr2, Time){
   # It compute and return the wasserstein distance between two distributions
-  
   n = min(length(distr1),length(distr2))
   m = max(length(distr1),length(distr2))
   
@@ -48,13 +35,15 @@ compute_wasserstein_distance <- function(distr1, distr2, Time){
     if (n==0){
       distance = (m-n)*Time - sum(na.omit(distr1[n+1:m]))
     } else {
-      distance = sum(abs(distr1[1:n]-distr2[1:n])) + (m-n)*Time - sum(na.omit(distr1[n+1:m]))
+      distance = sum(abs(distr1[1:n]-distr2[1:n])) + 
+        (m-n)*Time - sum(na.omit(distr1[n+1:m]))
     }
   } else if (length(distr1) < length(distr2)) {
     if (n==0){
       distance = (m-n)*Time - sum(na.omit(distr2[n+1:m]))
     } else {
-      distance = sum(abs(distr1[1:n]-distr2[1:n])) + (m-n)*Time - sum(na.omit(distr2[n+1:m]))
+      distance = sum(abs(distr1[1:n]-distr2[1:n])) + 
+        (m-n)*Time - sum(na.omit(distr2[n+1:m]))
     }
   } else {
     distance = sum(abs(distr1-distr2))
@@ -62,7 +51,6 @@ compute_wasserstein_distance <- function(distr1, distr2, Time){
   return (distance)
   #End function
 }
-
 
 # 3. Function to compute_meandiff_grt_q90_distance (MD90)
 compute_meandiff_grt_q90_distance <- function(distr1, distr2){
@@ -79,7 +67,6 @@ compute_meandiff_grt_q90_distance <- function(distr1, distr2){
   #End function
 }
 
-
 # 4. Function to compute_meandiff_less_q50_distance (MD50)
 compute_meandiff_less_q50_distance <- function(distr1, distr2){
   # It compute and return the diff between mean of event time diff
@@ -95,7 +82,6 @@ compute_meandiff_less_q50_distance <- function(distr1, distr2){
   return (distance)
   #End function
 }
-
 
 # 5. Function to digamma_distance (DIGAD)
 digamma_distance <- function(distr1, distr2){
@@ -114,13 +100,35 @@ digamma_distance <- function(distr1, distr2){
   #End function
 }
 
+################################################################################
+# function to convert time (in seconds) into days, hours, minutes, and seconds #
+################################################################################
 
-#############################################################################
-#############################################################################
+time_converter <- function(start_time, end_time){
+  # Convert the time difference into seconds
+  time <- as.numeric((end_time - start_time), units = "secs")
+  # Convert seconds into days, hours, minutes, and seconds
+  days <- floor(time / (24 * 3600))
+  hours <- floor((time %% (24 * 3600)) / 3600)
+  minutes <- floor((time %% 3600) / 60)
+  seconds <- round(time %% 60, 2)
+  
+  # Create a list to store the time breakdown
+  time_converted <- list(
+    # days = days,
+    # hours = hours,
+    # minutes = minutes,
+    # seconds = seconds
+    time = paste0(days, "d", hours, "h", minutes, "m", seconds, "s")
+  )
+  return(time_converted)
+}
 
-#FRACTIONAL HAWKES PROCESS (FHP) PARAMETER ESTIMATION
+################################################################################
+#             FRACTIONAL HAWKES PROCESS (FHP) PARAMETER ESTIMATION             #
+################################################################################
 
-#Function to simulate observation points for FHP
+# Function to simulate observation points for FHP
 simulate_points <- function(lambda, alpha, beta, Time){
   #It simulates and returns fractional Hawkes process number of observations
   #and time realization points
@@ -136,79 +144,11 @@ simulate_points <- function(lambda, alpha, beta, Time){
   #end function
 }
 
+################################################################################
+#                      FUNCTION TO COMPUTE THE LIKELIHOOD                      #
+################################################################################
 
-#############################################################################
-##### 2.  FHP2EHP_LAMBDA
-
-proc <- "FHP2EHP"
-par <- "Lambda"
-dataset <- "SimulatedData"
-
-
-### PARAMETER ESTIMATION
-
-#Inputs
-Timev <- c(100, 1000) # Final time interval
-truelambda <- 0.5  # true value of the parameter to estimate  
-alpha <- 0.5 
-beta <- 0.9999   ### ASSUM IT CLOSER TO 1
-
-for (iT in 1:length(Timev)){  #iT in 1:2
-  Time <- Timev[iT]
-  
-  for (iter in 1:Max_iter){ # iter in 1:5
-    # Observed data (SimPoints) with a true parameter value
-    SimPoints <- simulate_points(lambda=truelambda, alpha=alpha, beta=beta, Time=Time) 
-    
-    # We generate a uniformly distributed prior
-    ParameterSample_values <- runif(Niter,min=0,max=1)    # We generate a uniformly distributed prior
-    
-    #Simulated data (SimPointsth) with uniform prior for LAMBDA parameter
-    cl <- makeCluster(number_of_cores)  # 'number_of_cores' is the number of clusters (cores)
-    SimPointsth_list <- parSapply(cl , ParameterSample_values, simulate_points, alpha=alpha, beta=beta, Time=Time)
-    stopCluster(cl)
-    
-    
-    ### Run ABC algorithm
-    ### 1. compute_diff_log_nbr_distance (LN)
-    cl <- makeCluster(number_of_cores)  # 'number_of_cores' is the number of clusters (cores)
-    out_distance1 <- parSapply(cl , SimPointsth_list, compute_diff_log_nbr_distance, distr1 = SimPoints)
-    stopCluster(cl)  
-    ### 2. compute_wasserstein_distance (WS)
-    cl <- makeCluster(number_of_cores)  
-    out_distance2 <- parSapply(cl , SimPointsth_list, compute_wasserstein_distance, distr1 = SimPoints, Time = Time)
-    stopCluster(cl)  
-    ### 3. compute_meandiff_grt_q90_distance (MDG90)
-    cl <- makeCluster(number_of_cores)
-    out_distance3 <- parSapply(cl , SimPointsth_list, compute_meandiff_grt_q90_distance, distr1 = SimPoints)
-    stopCluster(cl)
-    ### 4. compute_meandiff_less_q50_distance (MDL50)
-    cl <- makeCluster(number_of_cores)
-    out_distance4 <- parSapply(cl , SimPointsth_list, compute_meandiff_less_q50_distance, distr1 = SimPoints)
-    stopCluster(cl)
-    ## 5. digamma_distance (DIGAD)
-    cl <- makeCluster(number_of_cores)
-    out_distance5 <- parSapply(cl , SimPointsth_list, digamma_distance, distr1 = SimPoints)
-    stopCluster(cl)
-    
-    # Create dataframes and Save into files
-    df1 <- data.frame(out_distance1, out_distance2, out_distance3, out_distance4, out_distance5, ParameterSample_values)
-    save(df1, file=paste0("data",proc,"_",par,"_",dataset,"_N",Niter,"_T",Time,"_D1_i",iter,".rdata"))
-    df2 <- data.frame(SimPoints)
-    save(df2, file=paste0("data",proc,"_",par,"_",dataset,"_N",Niter,"_T",Time,"_D2_i",iter,".rdata"))
-    #    save(SimPointsth_list, file=paste0("data",proc,"_",par,"_",dataset,"_SimPointsth_list_N",Niter,"_T",Time,"_i",iter,".rdata"))    
-  }
-}
-
-
-############################################################################
-### PLOT ###
-############################################################################
-
-rate_v <- c(0.05, 0.1)
-
-
-#Function to compute the likelihood function  for FRACTIONAL HAWKES PROCESS
+# Likelihood function  for FRACTIONAL HAWKES PROCESS
 compute_logLikelihood <- function(distr, lambda, alpha, beta, Time){
   library(MittagLeffleR)
   k = length(distr)
@@ -227,57 +167,139 @@ compute_logLikelihood <- function(distr, lambda, alpha, beta, Time){
   #end function
 }
 
+################################################################################
+#                              2. FHP2EHP_LAMBDA                               #
+################################################################################
+#############################################################################
 
-for (iter in 1:Max_iter){
+proc <- "FHP2EHP"
+par <- "Lambda"
+dataset <- "SimulatedData"
+
+# Cores, Number of iterations, and max of simulated data sets setting
+number_of_cores <- 24  # number of cores or clusters
+Niter <- 100000  # number of iterations
+Max_sim <- 5  # max number of different simulated data sets for each process
+
+#Inputs
+Timev <- c(100, 1000) # Final time interval
+truelambda <- 0.5  # true value of the parameter to estimate  
+alpha <- 0.5 
+beta <- 0.9999   ### ASSUM IT CLOSER TO 1
+
+# List to store results of EXECUTION TIME for each simulation
+result_list <- list()
+
+# Computation for each iteration
+for (sim in 1:Max_sim){
+  start_sim <- Sys.time() 
   
   # Save FIGURES in a pdf or png file
-  pdf(file = paste0("Fig",proc,"_",par,"_",dataset,"_1","_N",Niter,"_i",iter,".pdf"), width=12.5, height=10.5)
+  pdf(file = paste0("Fig",proc,"_",par,"_",dataset,"_1","_N",Niter,"_i",sim,".pdf"), 
+      width=12.5, height=10.5)
   par(mar = c(4, 4, 3, 1))        # Reduce space around plots
   par(mfrow=c(4,5),oma=c(3,3,3,3))
   
-  for (iT in 1:length(Timev)){
+  # Computation for each time interval iT = Time
+  for (iT in 1:length(Timev)){  #iT in 1:2
     Time <- Timev[iT]
     
-    # LOAD THE DATA SAVED
-    load(file=paste0("data",proc,"_",par,"_",dataset,"_N",Niter,"_T",Time,"_D1_i",iter,".rdata"))
-    load(file=paste0("data",proc,"_",par,"_",dataset,"_N",Niter,"_T",Time,"_D2_i",iter,".rdata"))
-    # Extract data
-    out_distance1 <- df1$out_distance1
-    out_distance2 <- df1$out_distance2
-    out_distance3 <- df1$out_distance3
-    out_distance4 <- df1$out_distance4
-    out_distance5 <- df1$out_distance5
-    ParameterSample_values <- df1$ParameterSample_values
-    SimPoints <- df2$SimPoints
+    # Observed data (SimPoints) with a true parameter value
+    SimPoints <- simulate_points(lambda=truelambda, alpha=alpha, beta=beta, Time=Time) 
     
+    ################################################################################
+    # ABC PARAMETER ESTIMATION #
+    ################################################################################
     
-    ### DISTANCE NAMES 
+    # Start timing for ABC section
+    ABC_start_time <- Sys.time()
+    
+    # We generate a uniformly distributed prior
+    ParameterSample_values <- runif(Niter,min=0,max=1)    # We generate a uniformly distributed prior
+    
+    # Simulated data (SimPointsth) with uniform prior for LAMBDA parameter
+    cl <- makeCluster(number_of_cores)  # Open the cluster 
+    SimPointsth_list <- parSapply(cl , ParameterSample_values, simulate_points, alpha=alpha, beta=beta, Time=Time)
+    stopCluster(cl)  # Stop the cluster at the end
+    
+    # End timing for ABC section
+    ABC_end_time <- Sys.time()
+    
+    # ABC Execution time
+    time_ABC <- time_converter(ABC_start_time, ABC_end_time)
+    
+    ################################################################################
+    #                      COMPUTE DISTANCE & SUMMARY STATISTICS                   #
+    ################################################################################
+    
+    cl <- makeCluster(number_of_cores)  # Open the cluster 
     dist1 <- "LN"
+    out_distance1 <- parLapply(cl, SimPointsth_list, compute_diff_log_nbr_distance, distr1 = SimPoints)
+    stopCluster(cl)  # Stop the cluster at the end
+    
+    cl <- makeCluster(number_of_cores)  # Open the cluster 
     dist2 <- "WS"
+    out_distance2 <- parLapply(cl, SimPointsth_list, compute_wasserstein_distance, distr1 = SimPoints, Time = Time)
+    stopCluster(cl)  # Stop the cluster at the end
+    
+    cl <- makeCluster(number_of_cores)  # Open the cluster 
     dist3 <- "MDG90"
+    out_distance3 <- parLapply(cl, SimPointsth_list, compute_meandiff_grt_q90_distance, distr1 = SimPoints)
+    stopCluster(cl)  # Stop the cluster at the end
+    
+    cl <- makeCluster(number_of_cores)  # Open the cluster 
     dist4 <- "MDL50"
+    out_distance4 <- parLapply(cl, SimPointsth_list, compute_meandiff_less_q50_distance, distr1 = SimPoints)
+    stopCluster(cl)  # Stop the cluster at the end
+    
+    cl <- makeCluster(number_of_cores)  # Open the cluster 
     dist5 <- "DIGAD"
+    out_distance5 <- parLapply(cl, SimPointsth_list, digamma_distance, distr1 = SimPoints)
+    stopCluster(cl)  # Stop the cluster at the end
     
-    data_frame1 <- data.frame(out_distance1, out_distance2, out_distance3, out_distance4, out_distance5)
-    data_frame2 <- data.frame(dist1, dist2, dist3, dist4, dist5)
+    ################################################################################
+    #                          MLE PARAMETER ESTIMATION                            #
+    ################################################################################
     
-    ## parameter values interval: [0, 1]
-    dx <- 1/60 #0.025/3*2 #bin size
-    LL <- 1/60 #0.025/3*2 # lower limit of the breaks interval
-    UL <- 59/60 # upper limit of the breaks interval
+    # Start timing for MLE section
+    MLE_start_time <- Sys.time()
+    
+    # parameter values interval: [0, 1]
+    dx <- 1/200  #bin size
+    LL <- 1/200  # lower limit of the breaks interval
+    UL <- 199/200 # upper limit of the breaks interval
     breaks_interval <- seq(LL-dx,UL+dx,by=dx)
     mids_interval <- seq(LL-dx/2, UL+dx/2, by=dx)
-    cl <- makeCluster(number_of_cores)  # 'number_of_cores' is the number of clusters (cores)
-    logLikelihood <- parSapply(cl, mids_interval, compute_logLikelihood, distr = SimPoints, beta = beta, alpha = alpha, Time = Time)
-    stopCluster(cl)
     
+    cl <- makeCluster(number_of_cores)  # Open the cluster 
+    logLikelihood <- parSapply(cl, mids_interval, compute_logLikelihood, distr = SimPoints, beta = beta, alpha = alpha, Time = Time)
+    stopCluster(cl)  # Stop the cluster at the end
+    
+    # Log likelihood translation
     likelihood <- exp(logLikelihood - mean(logLikelihood))  # translation of the logLikelihood to remove impossibilities
     
+    # End timing for MLE section
+    MLE_end_time <- Sys.time()
+    
+    # ABC Execution time
+    time_MLE <- time_converter(MLE_start_time, MLE_end_time)
+    
+    # Store the results in the result list  for ABC and MLE
+    result_list[[paste0("Time_", Time, "Sim_", sim)]] <- list(
+      Time = unlist(c("ABC" = time_ABC, "MLE" = time_MLE))
+    )
+    
+    ############################################################################
+    # Selection rate
+    rate_v <- c(0.05, 0.1)
     
     for (j in 1:length(rate_v)){
       
+      # DATAFRAMES FOR DISTANCES & SUMMARY STATISTICS, AND THEIR NAMES 
+      data_frame1 <- list(out_distance1, out_distance2, out_distance3, out_distance4, out_distance5)
+      data_frame2 <- list(dist1, dist2, dist3, dist4, dist5)
       
-      for (i in 1:length(data_frame1)){ # 
+      for (i in 1:length(data_frame2)){ # 
         out_distance <- as.numeric(data_frame1[[i]])
         dist <- as.character(data_frame2[[i]])
         
@@ -289,13 +311,13 @@ for (iter in 1:Max_iter){
         # less than threshold distance d
         abc_posterior <- ParameterSample_values[which(out_distance < d)]
         
+        ########################################################################
         ## kullback–Leibler divergence
-        
-        ### With Classical HISTOGRAM
+        ########################################################################
+        # With Classical HISTOGRAM
         h <- hist(abc_posterior,breaks = breaks_interval, plot = FALSE) # No need 
         ## of setting 'probability=TRUE' when used 'plot=FALSE'
         density_ABC <- h$density
-        
         
         posterior <- likelihood # For uniform prior in [0,1]
         exact_posterior <- posterior
@@ -312,6 +334,7 @@ for (iter in 1:Max_iter){
             density_LIK[v]=eps
           }
         }
+        
         
         ## We can find the KLD using hist densities
         KLD_value <- KLD(density_LIK,density_ABC)  ## KLD(Likelihood, ABC)
@@ -355,4 +378,16 @@ for (iter in 1:Max_iter){
     
   }
   dev.off()
+  
+  ############################
+  end_sim <- Sys.time()
+  
+  # Simulation Execution time
+  time_sim <- time_converter(start_sim, end_sim)
+  
+  cat(paste0("Iteration ", sim, " of ", proc, "_", par, " is completed.", " (",format(start_sim, "%Y-%m-%d %H:%M:%S"), 
+             " - ", format(end_sim, "%Y-%m-%d %H:%M:%S"), "). Duration: ", time_sim, "\n"))
 }
+
+# Save the results for all simulations
+saveRDS(result_list, file = paste0("Execution_Time_", proc, "_", par, "_", dataset, "_N", Niter, ".rds"))
