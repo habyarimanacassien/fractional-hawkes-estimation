@@ -1,9 +1,6 @@
 rm(list=ls())
 
 # Useful libraries
-library(rstudioapi)
-cur_dir = dirname(getSourceEditorContext()$path)
-setwd(cur_dir)
 library(MittagLeffleR)
 library(pracma)
 library("rlist")
