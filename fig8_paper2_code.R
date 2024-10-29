@@ -1,9 +1,6 @@
 rm(list=ls())  # Clear all objects from the current R environment
 
 # Useful libraries
-library(rstudioapi)  # Library to interact with the RStudio API
-cur_dir = dirname(getSourceEditorContext()$path)  # Get the current script directory
-setwd(cur_dir)  # Set working directory to the current script location
 library(MittagLeffleR)  # Mittag-Leffler random variable generation package
 library(pracma)  # Useful functions for numerical computation
 library("rlist")  # Work with lists in R
