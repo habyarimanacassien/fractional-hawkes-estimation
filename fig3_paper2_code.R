@@ -1,9 +1,4 @@
-#set directory as folder containing current file
-#install.packages("rstudioapi")
-library(rstudioapi)
-cur_dir = dirname(getSourceEditorContext()$path)
-setwd(cur_dir)
-
+# Required libraries
 library(plot3D)
 library(plotly)
 
